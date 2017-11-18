@@ -1,0 +1,332 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <title>Color Explorer (Three.js)</title>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, user-scalable=no, minimum-scale=1.0, maximum-scale=1.0">
+    <link rel="stylesheet" href="../css/base.css" />
+</head>
+<body>
+
+    <script src="../js/Three.js"></script>
+    <script src="../js/Detector.js"></script>
+    <script src="../js/Stats.js"></script>
+    <script src="../js/OrbitControls.js"></script>
+    <script src="../js/THREEx.KeyboardState.js"></script>
+    <script src="../js/THREEx.FullScreen.js"></script>
+    <script src="../js/THREEx.WindowResize.js"></script>
+
+    <script type="text/javascript" src="../js/DAT.GUI.min.js"></script>
+
+    <!-- jQuery code to display an information button and box when clicked. -->
+    <script src="../js/jquery-1.9.1.js"></script>
+    <script src="../js/jquery-ui.js"></script>
+    <link rel="stylesheet" href="../css/jquery-ui.css" />
+    <link rel="stylesheet" href="../css/info.css" />
+    
+<div><p>Currently editing: </p><span id="selectedObjectName"></span></div>
+
+    <div id="ThreeJS" style="position: absolute; left:0; top:0"></div>
+    <script>
+        /*
+            Three.js "tutorials by example"
+            Author: Lee Stemkoski
+            Date: July 2013 (three.js v59dev)
+         */
+
+        // MAIN
+
+        // standard global variables
+        var container, scene, camera, renderer, controls, stats;
+        var keyboard = new THREEx.KeyboardState();
+        var clock = new THREE.Clock();
+
+        // custom global variables
+        var selectedObject;
+        var parameters, initialParameters;
+        var gui;
+
+        init();
+        animate();
+
+        // FUNCTIONS
+        function init() {
+            // SCENE
+            scene = new THREE.Scene();
+
+            // CAMERA
+            var SCREEN_WIDTH = window.innerWidth, SCREEN_HEIGHT = window.innerHeight;
+            var VIEW_ANGLE = 45, ASPECT = SCREEN_WIDTH / SCREEN_HEIGHT, NEAR = 0.1, FAR = 20000;
+            camera = new THREE.PerspectiveCamera(VIEW_ANGLE, ASPECT, NEAR, FAR);
+            scene.add(camera);
+            camera.position.set(0, 150, 400);
+            camera.lookAt(scene.position);
+
+            // RENDERER
+            if (Detector.webgl) {
+                renderer = new THREE.WebGLRenderer({ antialias: true });
+            } else {
+                renderer = new THREE.CanvasRenderer();
+            }
+
+            renderer.setSize(SCREEN_WIDTH, SCREEN_HEIGHT);
+            container = document.getElementById('ThreeJS');
+            container.appendChild(renderer.domElement);
+
+            // EVENTS
+            THREEx.WindowResize(renderer, camera);
+            THREEx.FullScreen.bindKey({ charCode: 'm'.charCodeAt(0) });
+
+            // CONTROLS
+            controls = new THREE.OrbitControls(camera, renderer.domElement);
+
+            // STATS
+            stats = new Stats();
+            stats.domElement.style.position = 'absolute';
+            stats.domElement.style.bottom = '0';
+            stats.domElement.style.zIndex = 100;
+            container.appendChild(stats.domElement);
+
+            // LIGHT
+            var light = new THREE.PointLight(0xffffff);
+            light.position.set(-100, 150, 100);
+            scene.add(light);
+
+            // need to add an ambient light
+            //  for ambient colors to be visible
+            // make the ambient light darker so that
+            //  it doesn't overwhelm (like emmisive light)
+            var light2 = new THREE.AmbientLight(0x333333);
+            light2.position.set(light.position);
+            scene.add(light2);
+
+            var lightbulbGeometry = new THREE.SphereGeometry(10, 16, 8);
+            var lightbulbMaterial = new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.8, blending: THREE.AdditiveBlending });
+            var wireMaterial = new THREE.MeshBasicMaterial({ color: 0x000000, wireframe: true });
+            var materialArray = [lightbulbMaterial, wireMaterial];
+            var lightbulb = THREE.SceneUtils.createMultiMaterialObject(lightbulbGeometry, materialArray);
+            lightbulb.position = light.position;
+            scene.add(lightbulb);
+
+            // FLOOR
+            var floorTexture = new THREE.ImageUtils.loadTexture('../images/checkerboard.jpg');
+            floorTexture.wrapS = floorTexture.wrapT = THREE.RepeatWrapping;
+            floorTexture.repeat.set(10, 10);
+            var floorMaterial = new THREE.MeshBasicMaterial({ map: floorTexture, side: THREE.DoubleSide });
+            var floorGeometry = new THREE.PlaneGeometry(1000, 1000, 10, 10);
+            var floor = new THREE.Mesh(floorGeometry, floorMaterial);
+            floor.position.y = -100;
+            floor.rotation.x = Math.PI / 2;
+            scene.add(floor);
+
+            // SKYBOX/FOG
+            scene.fog = new THREE.FogExp2(0x9999ff, 0.00025);
+
+            ////////////
+            // CUSTOM //
+            ////////////
+
+            // Sphere
+            var sphereGeometry = new THREE.SphereGeometry(100, 50, 50);
+            var material = new THREE.MeshPhongMaterial({
+                transparent: true,
+                color: 0xff0000,
+                ambient: 0x000000,
+                emissive: 0x000033,
+                specular: 0xffff00,
+                shininess: 30,
+                opacity: 1
+            });
+            sphere = new THREE.Mesh(sphereGeometry, material);
+            sphere.position.set(0, 30, 0);
+            sphere.name = "sphere";
+            scene.add(sphere);
+
+            // cube
+            var cubeGeo = new THREE.CubeGeometry(50, 50, 50, 1, 1, 1);
+            var cube = new THREE.Mesh(cubeGeo, material);
+            cube.position.set(-200, 50, 100);
+            cube.name = "cube";
+            scene.add(cube);
+        
+            var axes = new THREE.AxisHelper(10);
+            scene.add(axes);
+
+            setSelectedObject(sphere);
+        }
+
+        function setSelectedObject(obj) {
+            if (obj === selectedObject) {
+                // Don't rebuild if we don't have to
+                return;
+            }
+
+            selectedObject = obj;
+            $("#selectedObjectName").text(obj.name);
+
+            initialParameters = readParametersFromObject(selectedObject);
+            parameters = readParametersFromObject(selectedObject);
+
+            try {
+                // Ignore exceptions when attempting to destroy the GUI before it was first built
+                gui.destroy();
+            } catch (e) { }
+            gui = buildMaterialEditor(selectedObject, parameters);
+            gui.open();
+
+            updateObject(selectedObject, parameters);
+        }
+
+        function readParametersFromObject(obj) {
+            var materialType;
+            if (obj.material instanceof THREE.MeshBasicMaterial) {
+                materialType = "Basic";
+            } else if (obj.material instanceof THREE.MeshLambertMaterial) {
+                materialType = "Lambert";
+            } else if (obj.material instanceof THREE.MeshPhongMaterial) {
+                materialType = "Phong";
+            } else {
+                materialType = "Wireframe";
+            }
+
+            return {
+                x: obj.position.x,
+                y: obj.position.y,
+                z: obj.position.z,
+                color: "#" + obj.material.color.getHexString(),
+                colorA: "#" + obj.material.ambient.getHexString(),
+                colorE: "#" + obj.material.emissive.getHexString(),
+                colorS: "#" + obj.material.specular.getHexString(),
+                shininess: obj.material.shininess,
+                opacity: obj.material.opacity,
+                visible: true,
+                material: materialType,
+                reset: function () { resetObject(obj) }
+            }
+        };
+
+        function buildMaterialEditor(selectedObject, parameters) {
+            var editor = new window.dat.GUI();
+            var folder1 = editor.addFolder('Position');
+            var posX = folder1.add(parameters, 'x').min(-200).max(200).step(1).listen();
+            var posY = folder1.add(parameters, 'y').min(0).max(100).step(1).listen();
+            var posZ = folder1.add(parameters, 'z').min(-200).max(200).step(1).listen();
+            folder1.open();
+
+            posX.onChange(function (value) { selectedObject.position.x = value; });
+            posY.onChange(function (value) { selectedObject.position.y = value; });
+            posZ.onChange(function (value) { selectedObject.position.z = value; });
+
+            var diffuseColor = editor.addColor(parameters, 'color').name('Color (Diffuse)').listen();
+            diffuseColor.onChange(function (value) {
+                selectedObject.material.color.setHex(value.replace("#", "0x"));
+            });
+
+            var ambientColor = editor.addColor(parameters, 'colorA').name('Color (Ambient)').listen();
+            ambientColor.onChange(function (value) {
+                selectedObject.material.ambient.setHex(value.replace("#", "0x"));
+            });
+
+            var emissiveColor = editor.addColor(parameters, 'colorE').name('Color (Emissive)').listen();
+            emissiveColor.onChange(function (value) {
+                if (parameters.material === "Basic" || parameters.material === "Wireframe") {
+                    // The Basic material doesn't support this property
+                    return;
+                }
+
+                selectedObject.material.emissive.setHex(value.replace("#", "0x"));
+            });
+
+            var specularColor = editor.addColor(parameters, 'colorS').name('Color (Specular)').listen();
+            specularColor.onChange(function (value) {
+                if (parameters.material === "Basic" || parameters.material === "Wireframe") {
+                    // The Basic material doesn't support this property
+                    return;
+                }
+
+                selectedObject.material.specular.setHex(value.replace("#", "0x"));
+            });
+
+            var shininess = editor.add(parameters, 'shininess').min(0).max(60).step(1).name('Shininess').listen();
+            shininess.onChange(function (value) { selectedObject.material.shininess = value; });
+            var opacity = editor.add(parameters, 'opacity').min(0).max(1).step(0.01).name('Opacity').listen();
+            opacity.onChange(function (value) { selectedObject.material.opacity = value; });
+
+            // ReSharper disable UnusedParameter - needed to update the value on parameters
+            var material = editor.add(parameters, 'material', ["Basic", "Lambert", "Phong", "Wireframe"]).name('Material Type').listen();
+            material.onChange(function (value) { updateObject(selectedObject, parameters); });
+            // ReSharper enable once UnusedParameter - needed to update the value on parameters
+
+            editor.add(parameters, 'reset').name("Reset Object Parameters");
+            return editor;
+        }
+
+        function updateObject(obj, parameters) {
+            var materialType = parameters.material;
+            var newMaterial;
+            if (materialType === "Basic") {
+                newMaterial = new THREE.MeshBasicMaterial({ color: 0x000000 });
+            } else if (materialType === "Lambert") {
+                newMaterial = new THREE.MeshLambertMaterial({ color: 0x000000 });
+            } else if (materialType === "Phong") {
+                newMaterial = new THREE.MeshPhongMaterial({ color: 0x000000 });
+            } else {
+                // (value == "Wireframe")
+                newMaterial = new THREE.MeshBasicMaterial({ wireframe: true });
+            }
+
+            obj.material = newMaterial;
+
+            obj.position.x = parameters.x;
+            obj.position.y = parameters.y;
+            obj.position.z = parameters.z;
+
+            obj.material.color.setHex(parameters.color.replace("#", "0x"));
+            if (obj.material.ambient) {
+                obj.material.ambient.setHex(parameters.colorA.replace("#", "0x"));
+            }
+
+            if (obj.material.emissive) {
+                obj.material.emissive.setHex(parameters.colorE.replace("#", "0x"));
+            }
+
+            if (obj.material.specular) {
+                obj.material.specular.setHex(parameters.colorS.replace("#", "0x"));
+            }
+
+            if (obj.material.shininess) {
+                obj.material.shininess = parameters.shininess;
+            }
+
+            obj.material.opacity = parameters.opacity;
+            obj.material.transparent = true;
+        }
+
+        function resetObject(obj) {
+            Object.assign(parameters, initialParameters);
+            updateObject(obj, parameters);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            render();
+            update();
+        }
+
+        function update() {
+            if (keyboard.pressed("1")) {
+                setSelectedObject(scene.getObjectByName("sphere"));
+            } else if (keyboard.pressed("2")) {
+                setSelectedObject(scene.getObjectByName("cube"));
+            }
+
+            controls.update();
+            stats.update();
+        }
+
+        function render() {
+            renderer.render(scene, camera);
+        }
+    </script>
+</body>
+</html>
