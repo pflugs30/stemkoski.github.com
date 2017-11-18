@@ -9,6 +9,7 @@ Project("{E24C65DC-7377-472B-9ABA-BC803B73C61A}") = "Three.js", ".", "{2C30A5A8-
 		Debug.AspNetCompiler.Debug = "True"
 		Release.AspNetCompiler.Debug = "False"
 		VWDPort = "60058"
+		SlnRelativePath = "..\Three.js\"
 	EndProjectSection
 EndProject
 Global
